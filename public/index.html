@@ -1,17 +1,147 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Document</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Actividad 1 - S3 y Notificaciones</title>
+    <link rel="stylesheet" href="index.css">
+  
 </head>
 <body>
-  <h1>subir archivos</h1>
-  <form action="/upload" method="POST" enctype="multipart/form-data">
-    <label for="archivo"> Seleccione archivo:</label>
-    <input type="file" id="archivo" name="archivo" required>
-    <button type="submit">Enviar</button>
-  </form>
-  
+    <h1>Laboratorio Floci - S3 y Notificaciones</h1>
+    
+    <form id="uploadForm">
+        <label for="archivo">Seleccione archivo:</label><br>
+        <input type="file" id="archivo" name="archivo" required><br>
+        <button type="submit">Enviar y Procesar Notificación</button>
+    </form>
+    
+    <!-- Notificación visual en pantalla -->
+    <div id="alerta-notificacion">
+         ¡Notificación Exitosa! Archivo subido a S3 y evento disparado a través de SNS/SQS.
+    </div>
+
+    <!-- Sección de la tabla que aparece solo al enviar -->
+    <div id="seccion-tabla">
+        <h2>Archivos Registrados en el Sistema</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th>Nombre del Archivo</th>
+                    <th>Bucket</th>
+                    <th>Fecha de Subida</th>
+                </tr>
+            </thead>
+            <tbody id="tabla-archivos">
+                <!-- Se llena dinámicamente -->
+            </tbody>
+        </table>
+    </div>
+    <!-- Sección para la Actividad 2: Rutina Automática -->
+    <div style="margin-top: 40px; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 0 10px rgba(0,0,0,0.1); max-width: 800px;">
+        <h2>Actividad 2: Historial de Rutinas Automáticas (Cron / EventBridge)</h2>
+        <p>Esta tabla muestra cuándo se ha ejecutado la tarea en segundo plano automáticamente.</p>
+        <button onclick="cargarLogsCron()">Actualizar Historial Cron</button>
+        
+        <table style="width: 100%; border-collapse: collapse; margin-top: 15px;">
+            <thead>
+                <tr>
+                    <th style="padding: 10px; border: 1px solid #ddd; background: #28a745; color: white;">ID Ejecución</th>
+                    <th style="padding: 10px; border: 1px solid #ddd; background: #28a745; color: white;">Estado / Mensaje</th>
+                    <th style="padding: 10px; border: 1px solid #ddd; background: #28a745; color: white;">Fecha y Hora</th>
+                </tr>
+            </thead>
+            <tbody id="tabla-cron-logs">
+                <tr><td colspan="3" style="text-align: center; padding: 10px;">Haz clic en actualizar para ver las ejecuciones.</td></tr>
+            </tbody>
+        </table>
+    </div>
+
+    <script>
+        async function cargarLogsCron() {
+            try {
+                const res = await fetch('/api/cron-logs');
+                const data = await res.json();
+                const tbody = document.getElementById('tabla-cron-logs');
+                tbody.innerHTML = '';
+
+                if (data.success && data.registros.length > 0) {
+                    data.registros.forEach(item => {
+                        const tr = document.createElement('tr');
+                        tr.innerHTML = `
+                            <td style="padding: 10px; border: 1px solid #ddd;">${item.id}</td>
+                            <td style="padding: 10px; border: 1px solid #ddd;">${item.mensaje}</td>
+                            <td style="padding: 10px; border: 1px solid #ddd;">${new Date(item.fecha).toLocaleString()}</td>
+                        `;
+                        tbody.appendChild(tr);
+                    });
+                } else {
+                    tbody.innerHTML = '<tr><td colspan="3" style="text-align: center; padding: 10px;">Aún no hay ejecuciones registradas. (Recuerda invocar la Lambda o esperar el cron).</td></tr>';
+                }
+            } catch (e) {
+                console.error(e);
+            }
+        }
+
+        // Cargar automáticamente al abrir la página
+        cargarLogsCron();
+    </script>
+
+    <script>
+        const form = document.getElementById('uploadForm');
+        const seccionTabla = document.getElementById('seccion-tabla');
+        const alertaNotificacion = document.getElementById('alerta-notificacion');
+
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const formData = new FormData(form);
+            alertaNotificacion.style.display = "none"; // Ocultar anterior
+
+            try {
+                // 1. Subir el archivo
+                const res = await fetch('/upload', {
+                    method: 'POST',
+                    body: formData
+                });
+                const data = await res.json();
+
+                if (data.success) {
+                    form.reset();
+
+                    // 2. Cargar los datos de la tabla
+                    const responseFiles = await fetch('/api/archivos');
+                    const resultado = await responseFiles.json();
+                    const tbody = document.getElementById('tabla-archivos');
+                    tbody.innerHTML = '';
+
+                    const archivos = resultado.archivos || [];
+
+                    if (archivos.length === 0) {
+                        tbody.innerHTML = '<tr><td colspan="3" style="text-align: center;">No hay archivos registrados.</td></tr>';
+                    } else {
+                        archivos.forEach(item => {
+                            const tr = document.createElement('tr');
+                            tr.innerHTML = `
+                                <td>${item.nombre}</td>
+                                <td>${resultado.bucket}</td>
+                                <td>${new Date(item.fecha).toLocaleString()}</td>
+                            `;
+                            tbody.appendChild(tr);
+                        });
+                    }
+
+                    // 3. Mostrar la notificación visual y la tabla en pantalla
+                    alertaNotificacion.style.display = "block";
+                    seccionTabla.style.display = "block";
+
+                } else {
+                    alert("Error: " + data.message);
+                }
+            } catch (err) {
+                console.error(err);
+                alert("Error de conexión al subir el archivo.");
+            }
+        });
+    </script>
 </body>
 </html>
